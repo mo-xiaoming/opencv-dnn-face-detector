@@ -1,0 +1,2 @@
+add_library(opt_parser opt_parser.cpp)
+target_link_libraries(opt_parser PUBLIC project_options project_warnings)
