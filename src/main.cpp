@@ -1,52 +1,79 @@
 #include <chrono>
+#include <csignal>
+#include <iomanip>
 #include <iostream>
 
+#include <opencv2/highgui.hpp>
 #include <opencv4/opencv2/opencv.hpp>
+#include <spdlog/spdlog.h>
 
 #include <face_detector/face_detector.hpp>
+#include <utils/frame_counter.hpp>
 
-int main(int argc, char **argv) {
+namespace {
+volatile std::sig_atomic_t signal_received = 0; // NOLINT
+void sig_handler(int signal) {
+    if (signal == SIGINT) {
+        spdlog::debug("received SIGINT");
+        signal_received = signal;
+    }
+}
+} // namespace
 
-    cv::VideoCapture video_capture(
-		    "nvarguscamerasrc sensor_id=0 ! "
-		    "video/x-raw(memory:NVMM), width=(int)1280, height=(int)720, format=(string)NV12, framerate=(fraction)60/1 ! "
-		    "nvvidconv flip-method=0 ! "
-		    "video/x-raw, width=(int)640, height=(int)360, format=(string)BGRx ! "
-		    "videoconvert ! "
-		    "video/x-raw, format=(string)BGR ! "
-		    "appsink", cv::CAP_GSTREAMER);
-    if (!video_capture.isOpened()) {
-        return 0;
+int main(int /*argc*/, char** /*argv*/) {
+    if (std::signal(SIGINT, sig_handler) == SIG_ERR) { // NOLINT
+        spdlog::error("can't catch SIGINT");
     }
 
-    FaceDetector face_detector;
+    auto video_capture = cv::VideoCapture(
+        "nvarguscamerasrc sensor_id=0 ! "
+        "video/x-raw(memory:NVMM), width=(int)1280, height=(int)720, format=(string)NV12, framerate=(fraction)60/1 ! "
+        "nvvidconv flip-method=0 ! "
+        "video/x-raw, width=(int)640, height=(int)360, format=(string)BGRx ! "
+        "videoconvert ! "
+        "video/x-raw, format=(string)BGR ! "
+        "appsink",
+        cv::CAP_GSTREAMER);
+    if (!video_capture.isOpened()) {
+        return 1;
+    }
 
-    double frame_nr = 0.;
-	auto tstart = std::chrono::steady_clock::now();
-    cv::Mat frame;
-    while (true) {
-	    ++frame_nr;
+    constexpr const char* win_name = "Image";
+    cv::namedWindow(win_name); // | cv::WINDOW_OPENGL);
 
-        video_capture >> frame;
+    auto frame_counter = utils::Frame_counter(
+        10, +[](double fps) { std::cout << std::setprecision(4) << "\rFPS: " << fps; });
 
-        auto rectangles = face_detector.detect_face_rectangles(frame);
-        cv::Scalar color(0, 105, 205);
-        for(const auto & r : rectangles){
+    auto save_nr = 0;
+
+    auto frame = cv::Mat();
+    while (signal_received == 0) {
+        if (!video_capture.read(frame)) {
+            break;
+        }
+
+        auto const rectangles = detect_face_rectangles(frame);
+        auto const color = cv::Scalar(0, 105, 205);
+        for (auto const& r : rectangles) {
             cv::rectangle(frame, r, color, 4);
         }
 
-
-        imshow("Image", frame);
-        int esc_key = 27;
-        if (cv::waitKey(10) == esc_key) {
+        cv::imshow(win_name, frame);
+        switch (static_cast<char>(cv::waitKey(1))) {
+        case 'q':
+        case 'Q':
+        case 27:
+            spdlog::info("Quiting...");
+            signal_received = 1;
+            break;
+        case ' ':
+            cv::imwrite(fmt::format("snapshot_{:.2d}.jpg", ++save_nr), frame);
+            break;
+        default:
             break;
         }
+        frame_counter.tick();
     }
-    auto milli = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - tstart).count();
-    std::cout << frame_nr << " frames in " << milli << " milliseconds, fps " << frame_nr/milli*1000.0 << std::endl;
 
-    video_capture.release();
     cv::destroyAllWindows();
-
-    return 0;
 }

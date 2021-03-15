@@ -1,7 +1,7 @@
 #include <array>
 
-#include <spdlog/fmt/fmt.h>
 #include <catch2/catch.hpp>
+#include <spdlog/fmt/fmt.h>
 
 #include <opt_parser/opt_parser.hpp>
 

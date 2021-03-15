@@ -16,6 +16,9 @@ set_project_warnings(project_warnings)
 
 include(cmake/StaticAnalyzers.cmake)
 
-add_subdirectory(src)
+find_package(spdlog REQUIRED)
+find_package(OpenCV REQUIRED)
 include(CTest)
-add_subdirectory(test)
+find_package(Catch2 REQUIRED)
+include(Catch)
+add_subdirectory(src)

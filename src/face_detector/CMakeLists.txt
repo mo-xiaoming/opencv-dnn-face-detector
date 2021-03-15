@@ -1,5 +1,3 @@
-find_package(OpenCV REQUIRED COMPONENTS dnn)
-
 add_library(face_detector face_detector.cpp)
 target_link_libraries(face_detector PUBLIC project_options project_warnings opencv_dnn)
 
